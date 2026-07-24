@@ -1,0 +1,27 @@
+name: fleet_control_app
+description: A Flutter Web/PWA application for fleet control
+version: 1.0.0
+
+environment:
+  sdk: '^3.4.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+  # Adicionado para o OCR local de placas e painéis
+  google_mlkit_text_recognition: ^0.13.0
+  image_picker: ^1.0.7
+  url_launcher: ^6.2.5   # <--- ADICIONE ESTA LINHA AQUI
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/historic_building.jpg
