@@ -356,7 +356,7 @@ class ApiService {
     }
   }
 
-  // 15. Cadastrar novo usuário administrador
+  // 15. Cadastrar novo usuário administrador (ou Master)
   static Future<Map<String, dynamic>> cadastrarAdmin({
     required String cpf,
     required String nome,
@@ -364,6 +364,7 @@ class ApiService {
     required String cargo,
     required String senha,
     required String adminSolicitanteCpf,
+    bool isMaster = false,
   }) async {
     try {
       final response = await http
@@ -377,6 +378,7 @@ class ApiService {
               'cargo': cargo,
               'senha': senha,
               'admin_solicitante_cpf': adminSolicitanteCpf,
+              'is_master': isMaster,
             }),
           )
           .timeout(const Duration(seconds: 10));
@@ -391,6 +393,31 @@ class ApiService {
     } catch (e) {
       print('Erro ao cadastrar administrador: $e');
       return {'sucesso': false, 'mensagem': 'Erro de conexão ao cadastrar administrador.'};
+    }
+  }
+
+  // 15b. Excluir usuário (apenas Master)
+  static Future<Map<String, dynamic>> excluirUsuario({
+    required int usuarioId,
+    required String adminSolicitanteCpf,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/usuarios/$usuarioId')
+          .replace(queryParameters: {'admin_solicitante_cpf': adminSolicitanteCpf});
+      final response = await http
+          .delete(uri)
+          .timeout(const Duration(seconds: 10));
+
+      final decoded = jsonDecode(response.body);
+
+      if (response.statusCode == 200) {
+        return {'sucesso': true, 'mensagem': decoded['mensagem'] ?? 'Usuário excluído com sucesso.'};
+      } else {
+        return {'sucesso': false, 'mensagem': decoded['erro'] ?? 'Erro ao excluir usuário.'};
+      }
+    } catch (e) {
+      print('Erro ao excluir usuário: $e');
+      return {'sucesso': false, 'mensagem': 'Erro de conexão ao excluir usuário.'};
     }
   }
 

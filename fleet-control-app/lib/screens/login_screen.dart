@@ -94,6 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
             //   - Apenas o Delegado Titular tenha acesso administrativo
             // ================================================================
             bool isAdm = false;
+            bool isMaster = false;
             String cargoFinal = 'Agente';
 
             if (cpfUsuario.isNotEmpty) {
@@ -105,9 +106,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 );
                 if (usuarioLocal != null) {
                   isAdm = usuarioLocal['is_adm'] == true;
+                  isMaster = usuarioLocal['is_master'] == true;
                   cargoFinal = (usuarioLocal['cargo']?.toString().trim() ?? '');
                   if (cargoFinal.isEmpty) cargoFinal = 'Agente';
-                  print('MAPEAMENTO DINÂMICO [OK]: Banco local -> cargo=$cargoFinal | isAdm=$isAdm | cpf=$cpfUsuario');
+                  print('MAPEAMENTO DINÂMICO [OK]: Banco local -> cargo=$cargoFinal | isAdm=$isAdm | isMaster=$isMaster | cpf=$cpfUsuario');
                 } else {
                   print('MAPEAMENTO DINÂMICO [FALHA]: API local retornou null. Usando fallback do webhook.');
                   // Fallback para dados do webhook
@@ -152,9 +154,10 @@ class _LoginScreenState extends State<LoginScreen> {
             await prefs.setString('email', emailUsuario);
             await prefs.setString('cargo', cargoFinal);
             await prefs.setBool('isAdm', isAdm);
+            await prefs.setBool('isMaster', isMaster);
             await prefs.setInt('horaLoginTimestamp', agora.millisecondsSinceEpoch);
 
-            print('LOGIN CONCLUÍDO: $nomeUsuario | cargo=$cargoFinal | isAdm=$isAdm');
+            print('LOGIN CONCLUÍDO: $nomeUsuario | cargo=$cargoFinal | isAdm=$isAdm | isMaster=$isMaster');
             
             Navigator.pushReplacement(
               context,
@@ -163,6 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   nome: nomeUsuario,
                   cargo: cargoFinal,
                   isAdm: isAdm,
+                  isMaster: isMaster,
                   cpf: cpfUsuario,
                   email: emailUsuario,
                   horaLogin: horaFormatada,

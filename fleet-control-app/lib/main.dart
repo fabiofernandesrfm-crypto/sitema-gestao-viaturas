@@ -26,7 +26,8 @@ void main() async {
       final nome = prefs.getString('nome') ?? 'Usuário';
       final String cargoSalvo = prefs.getString('cargo') ?? '';
       final cargo = cargoSalvo.isNotEmpty ? cargoSalvo : 'Usuário'; // <--- Recupera o cargo salvo
-      final bool isAdm = prefs.getBool('isAdm') ?? false; // <--- Recupera o status de Administrador
+      final bool isAdm = prefs.getBool('isAdm') ?? false;
+      final bool isMaster = prefs.getBool('isMaster') ?? false;
       final cpf = prefs.getString('cpf') ?? '';
       final email = prefs.getString('email') ?? '';
       
@@ -36,8 +37,9 @@ void main() async {
 
       initialScreen = MainScreen(
         nome: nome,
-        cargo: cargo,     // <--- Passa o cargo atualizado
-        isAdm: isAdm,     // <--- Passa o status de administrador para filtrar os módulos
+        cargo: cargo,
+        isAdm: isAdm,
+        isMaster: isMaster,
         cpf: cpf,
         email: email,
         horaLogin: horaLogin,

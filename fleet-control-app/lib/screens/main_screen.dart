@@ -19,6 +19,7 @@ class MainScreen extends StatefulWidget {
   final String nome;
   final String cargo;
   final bool isAdm;
+  final bool isMaster;
   final String cpf;
   final String email;
   final String horaLogin;
@@ -28,6 +29,7 @@ class MainScreen extends StatefulWidget {
     required this.nome,
     required this.cargo,
     required this.isAdm,
+    required this.isMaster,
     required this.cpf,
     required this.email,
     required this.horaLogin,
@@ -43,6 +45,7 @@ class _MainScreenState extends State<MainScreen> {
   String get nome => widget.nome;
   String get cargo => widget.cargo;
   bool get isAdm => widget.isAdm;
+  bool get isMaster => widget.isMaster;
   String get cpf => widget.cpf;
   String get email => widget.email;
   String get horaLogin => widget.horaLogin;
@@ -2462,9 +2465,13 @@ class _MainScreenState extends State<MainScreen> {
     final _cpfController = TextEditingController();
     final _nomeController = TextEditingController();
     final _emailController = TextEditingController();
-    final _cargoController = TextEditingController();
+    String _cargoSelecionado = 'Agente';
     final _senhaController = TextEditingController();
+    final _buscaController = TextEditingController();
+    String _perfilSelecionado = 'Administrador'; // 'Administrador' ou 'Master'
     bool _salvandoAdm = false;
+    String _termoBusca = '';
+    int _reloadCounter = 0;
 
     showDialog(
       context: context,
@@ -2484,7 +2491,7 @@ class _MainScreenState extends State<MainScreen> {
               children: [
                 ExpansionTile(
                   initiallyExpanded: true,
-                  title: const Text('Cadastrar Novo Administrador',
+                  title: const Text('Cadastrar Novo Usuário',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   children: [
                     Padding(
@@ -2531,15 +2538,47 @@ class _MainScreenState extends State<MainScreen> {
                               keyboardType: TextInputType.emailAddress,
                             ),
                             const SizedBox(height: 10),
-                            TextFormField(
-                              controller: _cargoController,
+                            DropdownButtonFormField<String>(
+                              value: _cargoSelecionado,
                               decoration: const InputDecoration(
-                                  labelText: 'Cargo (padrão: Administrador)',
-                                  hintText: 'Ex: Delegado, Investigador, Agente',
+                                  labelText: 'Cargo',
                                   border: OutlineInputBorder(),
                                   prefixIcon: Icon(Icons.work)),
+                              items: const [
+                                DropdownMenuItem(value: 'Agente', child: Text('Agente')),
+                                DropdownMenuItem(value: 'Delegado', child: Text('Delegado')),
+                                DropdownMenuItem(value: 'Escrivão', child: Text('Escrivão')),
+                              ],
+                              onChanged: (v) =>
+                                  setDialogState(() => _cargoSelecionado = v!),
                             ),
                             const SizedBox(height: 10),
+                            // Dropdown de Perfil (hierarquia)
+                            if (isMaster)
+                              DropdownButtonFormField<String>(
+                                value: _perfilSelecionado,
+                                decoration: const InputDecoration(
+                                    labelText: 'Perfil de Acesso',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.security)),
+                                items: const [
+                                  DropdownMenuItem(
+                                      value: 'Administrador',
+                                      child: Text('Administrador')),
+                                  DropdownMenuItem(
+                                      value: 'Master',
+                                      child: Row(
+                                        children: [
+                                          Text('Master'),
+                                          SizedBox(width: 6),
+                                          Icon(Icons.star, color: Colors.amber, size: 14),
+                                        ],
+                                      )),
+                                ],
+                                onChanged: (v) =>
+                                    setDialogState(() => _perfilSelecionado = v!),
+                              ),
+                            if (isMaster) const SizedBox(height: 10),
                             TextFormField(
                               controller: _senhaController,
                               decoration: const InputDecoration(
@@ -2564,7 +2603,7 @@ class _MainScreenState extends State<MainScreen> {
                                             strokeWidth: 2, color: Colors.white))
                                     : const Icon(Icons.person_add, color: Colors.white),
                                 label: Text(
-                                  _salvandoAdm ? 'Cadastrando...' : 'Cadastrar Administrador',
+                                  _salvandoAdm ? 'Cadastrando...' : 'Cadastrar Usuário',
                                   style: const TextStyle(color: Colors.white, fontSize: 14),
                                 ),
                                 onPressed: _salvandoAdm
@@ -2577,13 +2616,12 @@ class _MainScreenState extends State<MainScreen> {
                                             cpf: _cpfController.text.trim(),
                                             nome: _nomeController.text.trim(),
                                             email: _emailController.text.trim(),
-                                            cargo: _cargoController.text.trim().isNotEmpty
-                                                ? _cargoController.text.trim()
-                                                : 'Administrador',
+                                            cargo: _cargoSelecionado,
                                             senha: _senhaController.text.trim().isNotEmpty
                                                 ? _senhaController.text.trim()
                                                 : '123456',
                                             adminSolicitanteCpf: cpf,
+                                            isMaster: _perfilSelecionado == 'Master',
                                           );
 
                                           setDialogState(() => _salvandoAdm = false);
@@ -2594,13 +2632,15 @@ class _MainScreenState extends State<MainScreen> {
                                             _cpfController.clear();
                                             _nomeController.clear();
                                             _emailController.clear();
-                                            _cargoController.clear();
+                                            _cargoSelecionado = 'Agente';
                                             _senhaController.clear();
+                                            _perfilSelecionado = 'Administrador';
+                                            _reloadCounter++;
                                             setDialogState(() {});
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               SnackBar(
                                                 content: Text(resultado['mensagem'] ??
-                                                    'Administrador cadastrado com sucesso!'),
+                                                    'Usuário cadastrado com sucesso!'),
                                                 backgroundColor: Colors.green,
                                               ),
                                             );
@@ -2608,7 +2648,7 @@ class _MainScreenState extends State<MainScreen> {
                                             ScaffoldMessenger.of(context).showSnackBar(
                                               SnackBar(
                                                 content: Text(resultado['mensagem'] ??
-                                                    'Erro ao cadastrar administrador.'),
+                                                    'Erro ao cadastrar usuário.'),
                                                 backgroundColor: Colors.red,
                                               ),
                                             );
@@ -2624,49 +2664,331 @@ class _MainScreenState extends State<MainScreen> {
                   ],
                 ),
                 const Divider(),
-                const Text('Administradores Cadastrados',
+                // Campo de Busca Dinâmica
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: TextField(
+                    controller: _buscaController,
+                    decoration: InputDecoration(
+                      labelText: '🔍 Buscar por Nome, CPF ou E-mail',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _termoBusca.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear, size: 18),
+                              onPressed: () {
+                                _buscaController.clear();
+                                setDialogState(() => _termoBusca = '');
+                              },
+                            )
+                          : null,
+                    ),
+                    onChanged: (v) {
+                      setDialogState(() => _termoBusca = v.toLowerCase().trim());
+                    },
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text('Usuários Cadastrados',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Expanded(
                   child: FutureBuilder<List<dynamic>>(
+                    key: ValueKey<int>(_reloadCounter),
                     future: ApiService.listarUsuarios(),
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                        return const Center(child: Text('Nenhum usuário cadastrado.'));
+                      if (snapshot.connectionState == ConnectionState.waiting &&
+                          !snapshot.hasData) {
+                        return const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 12),
+                              Text('Carregando usuários...',
+                                  style: TextStyle(fontSize: 13, color: Colors.grey)),
+                            ],
+                          ),
+                        );
                       }
 
-                      final usuarios = snapshot.data!;
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.error_outline, size: 48, color: Colors.red.shade300),
+                              const SizedBox(height: 12),
+                              const Text('Erro ao carregar usuários.',
+                                  style: TextStyle(fontSize: 14, color: Colors.red)),
+                              const SizedBox(height: 8),
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.refresh, size: 16),
+                                label: const Text('Tentar novamente'),
+                                onPressed: () {
+                                  _reloadCounter++;
+                                  setDialogState(() {});
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+
+                      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.people_outline, size: 56, color: Colors.grey.shade400),
+                              const SizedBox(height: 12),
+                              const Text('Nenhum usuário cadastrado.',
+                                  style: TextStyle(fontSize: 15, color: Colors.grey)),
+                              const SizedBox(height: 4),
+                              Text('Cadastre o primeiro usuário acima.',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                            ],
+                          ),
+                        );
+                      }
+
+                      final todosUsuarios = snapshot.data!;
+
+                      // Filtro de busca case-insensitive
+                      final usuarios = _termoBusca.isEmpty
+                          ? todosUsuarios
+                          : todosUsuarios.where((u) {
+                              final nome = (u['nome'] ?? '').toString().toLowerCase();
+                              final cpf = (u['cpf'] ?? '').toString().toLowerCase();
+                              final email = (u['email'] ?? '').toString().toLowerCase();
+                              return nome.contains(_termoBusca) ||
+                                  cpf.contains(_termoBusca) ||
+                                  email.contains(_termoBusca);
+                            }).toList();
+
+                      if (usuarios.isEmpty) {
+                        return Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Nenhum usuário corresponde à busca "${_buscaController.text}".',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
 
                       return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
                         itemCount: usuarios.length,
                         itemBuilder: (context, index) {
                           final u = usuarios[index];
-                          final isAdmin = u['is_adm'] == true;
+                          final userIsMaster = u['is_master'] == true;
+                          final userIsAdmin = u['is_adm'] == true;
+                          final cargo = (u['cargo'] ?? 'Agente').toString();
+                          final emailUser = (u['email'] ?? '').toString();
+                          final cpfUser = (u['cpf'] ?? '').toString();
+                          final nomeUser = (u['nome'] ?? 'Sem nome').toString();
+
+                          // Define cor e ícone conforme perfil
+                          final Color perfilCor;
+                          final IconData perfilIcon;
+                          final String perfilLabel;
+                          if (userIsMaster) {
+                            perfilCor = Colors.amber.shade700;
+                            perfilIcon = Icons.shield;
+                            perfilLabel = 'Master';
+                          } else if (userIsAdmin) {
+                            perfilCor = Colors.deepPurple;
+                            perfilIcon = Icons.admin_panel_settings;
+                            perfilLabel = 'Administrador';
+                          } else {
+                            perfilCor = Colors.blueGrey;
+                            perfilIcon = Icons.person;
+                            perfilLabel = 'Usuário';
+                          }
 
                           return Card(
-                            child: ListTile(
-                              leading: Icon(
-                                isAdmin ? Icons.admin_panel_settings : Icons.person,
-                                color: isAdmin ? Colors.deepPurple : Colors.grey,
-                              ),
-                              title: Text(
-                                u['nome'] ?? '',
-                                style: const TextStyle(fontWeight: FontWeight.w500),
-                              ),
-                              subtitle: Column(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            elevation: 1.5,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('CPF: ${u['cpf']}'),
-                                  Text(
-                                    'Cargo: ${u['cargo'] ?? 'Não informado'} | '
-                                    'Status: ${isAdmin ? "Administrador" : "Usuário"}',
+                                  // Linha 1: Avatar + Nome + Badge de perfil
+                                  Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor: perfilCor.withOpacity(0.12),
+                                        child: Icon(perfilIcon,
+                                            color: perfilCor, size: 22),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              nomeUser,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 15,
+                                                  color: Color(0xFF1E293B)),
+                                            ),
+                                            const SizedBox(height: 1),
+                                            Text(
+                                              cargo,
+                                              style: TextStyle(
+                                                  fontSize: 12,
+                                                  color: Colors.grey.shade600,
+                                                  fontWeight: FontWeight.w500),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 5),
+                                        decoration: BoxDecoration(
+                                          color: perfilCor.withOpacity(0.1),
+                                          borderRadius:
+                                              BorderRadius.circular(20),
+                                          border: Border.all(
+                                              color: perfilCor.withOpacity(0.3),
+                                              width: 1),
+                                        ),
+                                        child: Text(
+                                          perfilLabel,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.bold,
+                                            color: perfilCor,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  if (u['email'] != null && (u['email'] as String).isNotEmpty)
-                                    Text('E-mail: ${u['email']}',
-                                        style: const TextStyle(fontSize: 11)),
+                                  const SizedBox(height: 12),
+                                  // Linha 2: Divisor
+                                  Container(
+                                    height: 1,
+                                    color: Colors.grey.shade200,
+                                  ),
+                                  const SizedBox(height: 10),
+                                  // Linha 3: CPF e E-mail lado a lado
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildInfoChip(
+                                          Icons.badge_outlined,
+                                          'CPF',
+                                          _formatarCpf(cpfUser),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      if (emailUser.isNotEmpty)
+                                        Expanded(
+                                          flex: 2,
+                                          child: _buildInfoChip(
+                                            Icons.email_outlined,
+                                            'E-mail',
+                                            emailUser,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  // Botão excluir para Master
+                                  if (isMaster && !userIsMaster) ...[
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton.icon(
+                                        style: TextButton.styleFrom(
+                                          foregroundColor: Colors.red.shade600,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 8, vertical: 4),
+                                        ),
+                                        icon: const Icon(Icons.delete_outline,
+                                            size: 16),
+                                        label: const Text('Excluir',
+                                            style: TextStyle(fontSize: 12)),
+                                        onPressed: () async {
+                                          final confirmar =
+                                              await showDialog<bool>(
+                                            context: context,
+                                            builder: (_) => AlertDialog(
+                                              title: const Text(
+                                                  'Confirmar Exclusão'),
+                                              content: Text(
+                                                  'Deseja realmente excluir o usuário "$nomeUser"?\n\nEsta ação não pode ser desfeita.'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(_, false),
+                                                  child: const Text('Cancelar'),
+                                                ),
+                                                ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(
+                                                      backgroundColor:
+                                                          Colors.red),
+                                                  onPressed: () =>
+                                                      Navigator.pop(_, true),
+                                                  child: const Text('Excluir',
+                                                      style: TextStyle(
+                                                          color: Colors.white)),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+
+                                          if (confirmar == true) {
+                                            final resultado =
+                                                await ApiService.excluirUsuario(
+                                              usuarioId: u['id'],
+                                              adminSolicitanteCpf: cpf,
+                                            );
+
+                                            if (!ctx.mounted) return;
+
+                                            if (resultado['sucesso'] == true) {
+                                              _reloadCounter++;
+                                              setDialogState(() {});
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                      resultado['mensagem'] ??
+                                                          'Usuário excluído com sucesso.'),
+                                                  backgroundColor: Colors.green,
+                                                ),
+                                              );
+                                            } else {
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                      resultado['mensagem'] ??
+                                                          'Erro ao excluir usuário.'),
+                                                  backgroundColor: Colors.red,
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -2676,37 +2998,65 @@ class _MainScreenState extends State<MainScreen> {
                     },
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber.shade300),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.warning_amber, color: Colors.amber, size: 18),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'A exclusão de administradores não está disponível pela interface. '
-                          'Para remover um administrador, o gestor do banco de dados deve fazê-lo diretamente.',
-                          style: TextStyle(fontSize: 11, color: Colors.brown),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
           actions: [
             ElevatedButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: () {
+                _buscaController.dispose();
+                Navigator.pop(ctx);
+              },
               child: const Text('Fechar'),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ============= MÉTODO AUXILIAR: INFO CHIP (CARDS DE USUÁRIOS) =============
+  Widget _buildInfoChip(IconData icon, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey.shade600),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade500,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF1E293B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

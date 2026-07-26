@@ -31,22 +31,26 @@ pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS senha VARCHAR(255) DEF
   .catch(err => console.error('Erro ao adicionar coluna senha:', err));
 pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP DEFAULT NOW()`)
   .catch(err => console.error('Erro ao adicionar coluna atualizado_em:', err));
+pool.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS is_master BOOLEAN DEFAULT false`)
+  .catch(err => console.error('Erro ao adicionar coluna is_master:', err));
 
 pool.query(`UPDATE usuarios SET cargo = 'Agente' WHERE cargo IS NULL`)
   .catch(err => console.error('Erro ao preencher cargos nulos:', err));
 pool.query(`UPDATE usuarios SET senha = '123456' WHERE senha IS NULL`)
   .catch(err => console.error('Erro ao preencher senhas nulas:', err));
+pool.query(`UPDATE usuarios SET is_master = false WHERE is_master IS NULL`)
+  .catch(err => console.error('Erro ao preencher is_master nulos:', err));
 
 pool.query(`
-  INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, senha)
-  VALUES ('00000000191', 'Delegado Titular', 'delegado@policiacivil.pe.gov.br', 'Delegado', true, 'admin123')
+  INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, is_master, senha)
+  VALUES ('00000000191', 'Delegado Titular', 'delegado@policiacivil.pe.gov.br', 'Delegado', true, false, 'admin123')
   ON CONFLICT (cpf) DO NOTHING;
 `).catch(err => console.error('Erro ao inserir seed de admin:', err));
 
 pool.query(`
-  INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, senha)
-  VALUES ('06611289461', 'Fabio Fernandes dos Santos', 'fabiofernandes@policiacivil.pe.gov.br', 'Agente', true, '123456')
-  ON CONFLICT (cpf) DO UPDATE SET cargo = 'Agente', is_adm = true, senha = '123456';
+  INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, is_master, senha)
+  VALUES ('06611289461', 'fabio fernandes dos santos', 'fabiofernandes@policiacivil.pe.gov.br', 'Agente', true, true, '123456')
+  ON CONFLICT (cpf) DO UPDATE SET cargo = 'Agente', is_adm = true, is_master = true, senha = '123456';
 `).catch(err => console.error('Erro ao inserir seed de fabiofernandes:', err));
 
 pool.query(`
@@ -464,24 +468,77 @@ app.post('/api/usuarios/buscar-ou-criar', async (req, res) => {
 });
 
 app.get('/api/usuarios', async (req, res) => {
-  try { const r = await pool.query('SELECT id, cpf, nome, email, cargo, is_adm, criado_em FROM usuarios ORDER BY nome'); res.json(r.rows); }
+  try { const r = await pool.query('SELECT id, cpf, nome, email, cargo, is_adm, is_master, criado_em FROM usuarios ORDER BY nome'); res.json(r.rows); }
   catch (err) { res.status(500).json({ erro: 'Erro.' }); }
 });
 
 app.post('/api/usuarios/cadastrar-admin', async (req, res) => {
-  const { cpf, nome, email, cargo, senha, admin_solicitante_cpf } = req.body;
+  const { cpf, nome, email, cargo, senha, admin_solicitante_cpf, is_master } = req.body;
   if (!cpf || !nome) return res.status(400).json({ erro: 'CPF e nome são obrigatórios.' });
   if (!admin_solicitante_cpf) return res.status(400).json({ erro: 'CPF do admin solicitante é obrigatório.' });
   try {
-    const adminResult = await pool.query('SELECT is_adm FROM usuarios WHERE cpf = $1', [admin_solicitante_cpf.replace(/[^0-9]/g, '')]);
+    // Verifica usuário solicitante (precisa ser adm ou master)
+    const cpfSolicitanteLimpo = admin_solicitante_cpf.replace(/[^0-9]/g, '');
+    const adminResult = await pool.query('SELECT id, is_adm, is_master FROM usuarios WHERE REPLACE(REPLACE(REPLACE(cpf, \'.\', \'\'), \'-\', \'\'), \'/\', \'\') = $1', [cpfSolicitanteLimpo]);
     if (adminResult.rows.length === 0) return res.status(403).json({ erro: 'Admin solicitante não encontrado.' });
-    if (adminResult.rows[0].is_adm !== true) return res.status(403).json({ erro: 'Apenas administradores podem cadastrar novos admins.' });
+    const solicitante = adminResult.rows[0];
+    if (solicitante.is_adm !== true && solicitante.is_master !== true) {
+      return res.status(403).json({ erro: 'Apenas administradores ou Master podem cadastrar novos usuários.' });
+    }
+
+    // Só Master pode cadastrar outro Master
+    const novoIsMaster = is_master === true;
+    if (novoIsMaster && solicitante.is_master !== true) {
+      return res.status(403).json({ erro: 'Apenas o Master pode cadastrar outro Master.' });
+    }
+
     const cpfLimpo = cpf.replace(/[^0-9]/g, '');
-    const existente = await pool.query('SELECT id FROM usuarios WHERE cpf = $1', [cpfLimpo]);
-    if (existente.rows.length > 0) return res.status(409).json({ erro: 'CPF já cadastrado.' });
-    const novo = await pool.query(`INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, senha) VALUES ($1, $2, $3, $4, true, $5) RETURNING id, cpf, nome, email, cargo, is_adm, criado_em;`, [cpfLimpo, nome, email || '', cargo || 'Administrador', senha || '123456']);
+
+    // Validação anti-duplicidade: CPF
+    const existenteCpf = await pool.query('SELECT id FROM usuarios WHERE REPLACE(REPLACE(REPLACE(cpf, \'.\', \'\'), \'-\', \'\'), \'/\', \'\') = $1', [cpfLimpo]);
+    if (existenteCpf.rows.length > 0) return res.status(409).json({ erro: 'CPF já cadastrado no sistema.' });
+
+    // Validação anti-duplicidade: E-mail
+    if (email && email.trim() !== '') {
+      const existenteEmail = await pool.query('SELECT id FROM usuarios WHERE LOWER(email) = LOWER($1)', [email.trim()]);
+      if (existenteEmail.rows.length > 0) return res.status(409).json({ erro: 'E-mail já cadastrado no sistema.' });
+    }
+
+    const novo = await pool.query(
+      `INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, is_master, senha) 
+       VALUES ($1, $2, $3, $4, true, $5, $6) 
+       RETURNING id, cpf, nome, email, cargo, is_adm, is_master, criado_em;`,
+      [cpfLimpo, nome, email || '', cargo || 'Administrador', novoIsMaster, senha || '123456']
+    );
     res.status(201).json({ mensagem: 'Administrador cadastrado!', usuario: novo.rows[0] });
-  } catch (err) { res.status(500).json({ erro: 'Erro interno.' }); }
+  } catch (err) { console.error('Erro no cadastro:', err); res.status(500).json({ erro: 'Erro interno.' }); }
+});
+
+// Excluir usuário (apenas Master)
+app.delete('/api/usuarios/:id', async (req, res) => {
+  const { admin_solicitante_cpf } = req.query;
+  if (!admin_solicitante_cpf) return res.status(400).json({ erro: 'CPF do solicitante é obrigatório.' });
+  try {
+    const cpfSolicitanteLimpo = admin_solicitante_cpf.replace(/[^0-9]/g, '');
+    const solicitanteResult = await pool.query(
+      'SELECT id, is_master FROM usuarios WHERE REPLACE(REPLACE(REPLACE(cpf, \'.\', \'\'), \'-\', \'\'), \'/\', \'\') = $1',
+      [cpfSolicitanteLimpo]
+    );
+    if (solicitanteResult.rows.length === 0) return res.status(403).json({ erro: 'Solicitante não encontrado.' });
+    if (solicitanteResult.rows[0].is_master !== true) {
+      return res.status(403).json({ erro: 'Apenas o Master pode excluir usuários.' });
+    }
+
+    // Verifica se o alvo a ser excluído existe
+    const alvoResult = await pool.query('SELECT id, is_master, nome FROM usuarios WHERE id = $1', [req.params.id]);
+    if (alvoResult.rows.length === 0) return res.status(404).json({ erro: 'Usuário não encontrado.' });
+    if (alvoResult.rows[0].is_master === true) {
+      return res.status(403).json({ erro: 'Não é possível excluir outro usuário Master.' });
+    }
+
+    await pool.query('DELETE FROM usuarios WHERE id = $1', [req.params.id]);
+    res.json({ mensagem: `Usuário "${alvoResult.rows[0].nome}" excluído com sucesso.` });
+  } catch (err) { console.error('Erro ao excluir usuário:', err); res.status(500).json({ erro: 'Erro interno.' }); }
 });
 
 app.post('/api/login', async (req, res) => {
@@ -493,7 +550,7 @@ app.post('/api/login', async (req, res) => {
     if (resultado.rows.length === 0) return res.status(401).json({ acesso: 'negado', mensagem: 'Usuário não encontrado.' });
     const usuario = resultado.rows[0];
     if (usuario.senha !== pass) return res.status(401).json({ acesso: 'negado', mensagem: 'Senha incorreta.' });
-    res.json({ acesso: 'permitido', nome: usuario.nome, email: usuario.email || '', cpf: usuario.cpf, adm: usuario.is_adm === true, cargo: usuario.cargo || 'Agente' });
+    res.json({ acesso: 'permitido', nome: usuario.nome, email: usuario.email || '', cpf: usuario.cpf, adm: usuario.is_adm === true, master: usuario.is_master === true, cargo: usuario.cargo || 'Agente' });
   } catch (err) { res.status(500).json({ acesso: 'negado', mensagem: 'Erro interno.' }); }
 });
 
