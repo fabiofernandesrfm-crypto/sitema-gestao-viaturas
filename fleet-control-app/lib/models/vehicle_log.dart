@@ -1,7 +1,7 @@
 class VehicleLog {
   final int? id;
   final String agentName;
-  final String actionType; // Ex: 'Saída de Viatura', 'Entrada de Viatura', 'Abastecimento', etc.
+  final String actionType; // Ex: 'Saída de Viatura', 'Devolução de Viatura', 'Abastecimento', etc.
   final String placa;
   final String modelo;
   final int? quilometragem;

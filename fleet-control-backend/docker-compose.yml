@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Banco de dados PostgreSQL
+  db:
+    image: postgres:16-alpine
+    container_name: sgv-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sgv_viaturas
+      POSTGRES_USER: sgv_user
+      POSTGRES_PASSWORD: sgv_password_2024
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sgv_user -d sgv_viaturas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sgv-network
+
+  # API Backend Node.js
+  api:
+    build: .
+    container_name: sgv-api
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://sgv_user:sgv_password_2024@db:5432/sgv_viaturas
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sgv-network
+
+volumes:
+  pgdata:
+    name: sgv_pgdata
+
+networks:
+  sgv-network:
+    name: sgv-network
+    driver: bridge

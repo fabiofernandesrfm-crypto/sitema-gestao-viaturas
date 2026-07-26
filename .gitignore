@@ -1,0 +1,20 @@
+# Flutter
+fleet-control-app/.dart_tool/
+fleet-control-app/build/
+fleet-control-app/.flutter-plugins
+fleet-control-app/.flutter-plugins-dependencies
+fleet-control-app/pubspec.lock
+
+# Node.js
+**/node_modules/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'main_screen.dart';
+import '../config/api_config.dart';
+import '../services/api_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -17,8 +20,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
 
-  final String _apiUrl = "https://analise.policiacivil.pe.gov.br/webhook/loginSgv";
-  final String _tokenLogin = "token_AdbpGk1GaEUAb93B5ueSfCo7ZzPsXNJw";
+  String get _apiUrl => ApiConfig.loginUrl;
+  String get _tokenLogin => ApiConfig.loginToken;
 
   Future<void> _handleLogin() async {
     final user = _userController.text.trim();
@@ -46,18 +49,16 @@ class _LoginScreenState extends State<LoginScreen> {
     };
 
     try {
-      final response = await http.post(
-        Uri.parse(_apiUrl),
-        headers: {
-          "Authorization": _tokenLogin,
-          "Content-Type": "application/json",
-        },
-        body: jsonEncode(payload),
-      );
-
-      setState(() {
-        _isLoading = false;
-      });
+      final response = await http
+          .post(
+            Uri.parse(_apiUrl),
+            headers: {
+              "Authorization": _tokenLogin,
+              "Content-Type": "application/json",
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 15));
 
       print('STATUS CODE: ${response.statusCode}');
       print('BODY DA RESPOSTA: ${response.body}');
@@ -70,50 +71,100 @@ class _LoginScreenState extends State<LoginScreen> {
           final acesso = responseData['acesso']?.toString().toLowerCase() ?? '';
           
           if (acesso == 'permitido') {
-            print('ACESSO PERMITIDO! Redirecionando...');
+            print('ACESSO PERMITIDO! Iniciando mapeamento dinâmico...');
             if (!mounted) return;
             
             final agora = DateTime.now();
             final horaFormatada = 
                 '${agora.day.toString().padLeft(2, '0')}/${agora.month.toString().padLeft(2, '0')}/${agora.year} ${agora.hour.toString().padLeft(2, '0')}:${agora.minute.toString().padLeft(2, '0')}';
             
-            // Tratamento e verificação do status de Administrador
-            final admRaw = responseData['adm'] ?? responseData['isAdm'] ?? responseData['administrador'] ?? false;
+            // Dados do webhook (login externo) — usados como fallback
+            final nomeUsuario = responseData['nome'] ?? '';
+            final emailUsuario = responseData['email'] ?? '';
+            // Remove formatação: pontos, traços e barras do CPF
+            final cpfUsuario = (responseData['cpf'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+
+            // ================================================================
+            // MAPEAMENTO DINÂMICO DE PERFIL
+            // ================================================================
+            // O webhook externo apenas AUTENTICA o usuário.
+            // A AUTORIZAÇÃO (cargo e perfil administrador) é determinada
+            // pelo banco de dados LOCAL (PostgreSQL), garantindo que:
+            //   - fabiofernandes SEMPRE retorne como Agente (is_adm = false)
+            //   - Apenas o Delegado Titular tenha acesso administrativo
+            // ================================================================
             bool isAdm = false;
-            if (admRaw is bool) {
-              isAdm = admRaw;
+            String cargoFinal = 'Agente';
+
+            if (cpfUsuario.isNotEmpty) {
+              try {
+                final usuarioLocal = await ApiService.buscarOuCriarUsuario(
+                  cpf: cpfUsuario,
+                  nome: nomeUsuario,
+                  email: emailUsuario,
+                );
+                if (usuarioLocal != null) {
+                  isAdm = usuarioLocal['is_adm'] == true;
+                  cargoFinal = (usuarioLocal['cargo']?.toString().trim() ?? '');
+                  if (cargoFinal.isEmpty) cargoFinal = 'Agente';
+                  print('MAPEAMENTO DINÂMICO [OK]: Banco local -> cargo=$cargoFinal | isAdm=$isAdm | cpf=$cpfUsuario');
+                } else {
+                  print('MAPEAMENTO DINÂMICO [FALHA]: API local retornou null. Usando fallback do webhook.');
+                  // Fallback para dados do webhook
+                  final admRaw = responseData['adm'] ?? responseData['isAdm'] ?? false;
+                  if (admRaw is bool) {
+                    isAdm = admRaw;
+                  } else {
+                    final valStr = admRaw.toString().toLowerCase();
+                    isAdm = (valStr == 'true' || valStr == 's' || valStr == 'sim' || valStr == '1');
+                  }
+                  cargoFinal = (responseData['cargo'] ?? responseData['funcao'] ?? 'Agente').toString().trim();
+                  if (cargoFinal.isEmpty) cargoFinal = 'Agente';
+                }
+              } catch (e) {
+                print('MAPEAMENTO DINÂMICO [ERRO]: Exceção ao consultar API local — $e');
+                // Fallback: usa valores do webhook como último recurso
+                final admRaw = responseData['adm'] ?? responseData['isAdm'] ?? false;
+                if (admRaw is bool) {
+                  isAdm = admRaw;
+                } else {
+                  final valStr = admRaw.toString().toLowerCase();
+                  isAdm = (valStr == 'true' || valStr == 's' || valStr == 'sim' || valStr == '1');
+                }
+                cargoFinal = (responseData['cargo'] ?? responseData['funcao'] ?? 'Agente').toString().trim();
+                if (cargoFinal.isEmpty) cargoFinal = 'Agente';
+              }
             } else {
-              final valStr = admRaw.toString().toLowerCase();
-              isAdm = (valStr == 'true' || valStr == 's' || valStr == 'sim' || valStr == '1');
+              print('MAPEAMENTO DINÂMICO [AVISO]: CPF vazio. Webhook não retornou CPF. Usando dados do webhook.');
+              final admRaw = responseData['adm'] ?? false;
+              isAdm = admRaw is bool ? admRaw : admRaw.toString().toLowerCase() == 'true';
+              cargoFinal = (responseData['cargo'] ?? 'Agente').toString().trim();
+              if (cargoFinal.isEmpty) cargoFinal = 'Agente';
             }
 
-            // AJUSTE DE SEGURANÇA LOCAL: Força administrador para o seu CPF cadastrado no banco
-            final cpfRetornado = responseData['cpf'] ?? '';
-            final userDigitado = user.replaceAll(RegExp(r'[^0-9]'), '');
-            if (userDigitado == '06611289461' || cpfRetornado.replaceAll(RegExp(r'[^0-9]'), '') == '06611289461') {
-              isAdm = true;
-            }
-
-            // Salva a sessão e os dados do usuário (incluindo cargo e status de ADM)
+            // Salva a sessão e os dados do usuário
             final prefs = await SharedPreferences.getInstance();
             await prefs.setBool('isLoggedIn', true);
             await prefs.setInt('loginTimestamp', agora.millisecondsSinceEpoch);
-            await prefs.setString('nome', responseData['nome'] ?? 'fabio fernandes dos santos');
-            await prefs.setString('cargo', responseData['cargo'] ?? 'Agente');
+
+            await prefs.setString('nome', nomeUsuario);
+            await prefs.setString('cpf', cpfUsuario);
+            await prefs.setString('email', emailUsuario);
+            await prefs.setString('cargo', cargoFinal);
             await prefs.setBool('isAdm', isAdm);
-            await prefs.setString('cpf', responseData['cpf'] ?? '06611289461');
-            await prefs.setString('email', responseData['email'] ?? 'fabiofernandes@policiacivil.pe.gov.br');
             await prefs.setInt('horaLoginTimestamp', agora.millisecondsSinceEpoch);
 
+            print('LOGIN CONCLUÍDO: $nomeUsuario | cargo=$cargoFinal | isAdm=$isAdm');
+            
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
                 builder: (context) => MainScreen(
-                  nome: responseData['nome'] ?? 'fabio fernandes dos santos',
-                  cargo: responseData['cargo'] ?? 'Agente',
+                  nome: nomeUsuario,
+                  cargo: cargoFinal,
                   isAdm: isAdm,
-                  cpf: responseData['cpf'] ?? '06611289461',
-                  email: responseData['email'] ?? 'fabiofernandes@policiacivil.pe.gov.br',
+                  cpf: cpfUsuario,
+                  email: emailUsuario,
                   horaLogin: horaFormatada,
                 ),
               ),
@@ -135,10 +186,23 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       );
 
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tempo de conexão esgotado. Verifique se o servidor está rodando.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } on http.ClientException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível conectar ao servidor. Verifique sua rede.'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -146,6 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 

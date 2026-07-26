@@ -23,8 +23,9 @@ void main() async {
 
     if (currentTime - loginTimestamp < twoHoursInMs) {
       // Sessão válida! Recupera os dados salvos localmente
-      final nome = prefs.getString('nome') ?? 'Agente';
-      final cargo = prefs.getString('cargo') ?? 'Agente'; // <--- Recupera o cargo salvo
+      final nome = prefs.getString('nome') ?? 'Usuário';
+      final String cargoSalvo = prefs.getString('cargo') ?? '';
+      final cargo = cargoSalvo.isNotEmpty ? cargoSalvo : 'Usuário'; // <--- Recupera o cargo salvo
       final bool isAdm = prefs.getBool('isAdm') ?? false; // <--- Recupera o status de Administrador
       final cpf = prefs.getString('cpf') ?? '';
       final email = prefs.getString('email') ?? '';
