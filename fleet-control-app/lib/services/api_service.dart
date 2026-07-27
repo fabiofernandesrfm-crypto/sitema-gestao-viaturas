@@ -422,6 +422,8 @@ class ApiService {
   }
 
   // 13. Dar baixa em manutenção (total ou parcial)
+  // ⚠️ O backend ignora o :id da rota e usa os campos do body (placa, componente, baixar_todas)
+  // Usamos um ID placeholder (0) que será ignorado pelo backend
   static Future<bool> baixarManutencao({
     required String placa,
     String? componente,
@@ -431,7 +433,7 @@ class ApiService {
     try {
       final response = await http
           .put(
-            Uri.parse('$baseUrl/manutencoes/1/baixa'),
+            Uri.parse('$baseUrl/manutencoes/0/baixa'),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'placa': placa,

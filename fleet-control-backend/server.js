@@ -5,7 +5,16 @@ require('dotenv').config();
 
 const app = express();
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:8080',          // Dev local Flutter web
+    'http://localhost:3000',          // Dev local backend
+    'https://analise.policiacivil.pe.gov.br', // Produção
+    /\.policiacivil\.pe\.gov\.br$/,   // Qualquer subdomínio da PCPE
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+}));
 
 const PORT = process.env.PORT || 3000;
 
@@ -125,10 +134,28 @@ app.post('/api/movimentacoes', async (req, res) => {
   const km = (quilometragem !== undefined && quilometragem !== null && quilometragem !== '' && quilometragem !== 'N/A' && !isNaN(Number(quilometragem)))
     ? Number(quilometragem) : null;
   try {
-    const ultimoLogQuery = `SELECT * FROM vehicle_logs WHERE placa = $1 ORDER BY id DESC LIMIT 1;`;
-    const ultimoLogResult = await pool.query(ultimoLogQuery, [placa.toUpperCase()]);
-    const ultimoLog = ultimoLogResult.rows.length > 0 ? ultimoLogResult.rows[0] : null;
-    const viaturaEmUso = ultimoLog && ultimoLog.tipo_movimento === 'Saída de Viatura';
+    // ==========================================
+    // VERIFICAÇÃO ROBUSTA DE VIATURA EM USO
+    // Busca a ÚLTIMA SAÍDA da viatura e verifica se há uma DEVOLUÇÃO posterior a ela.
+    // Isso evita o bug em que um abastecimento entre saída e devolução "mascarava" o status real.
+    // ==========================================
+    const ultimaSaidaQuery = `
+      SELECT id, quilometragem FROM vehicle_logs 
+      WHERE placa = $1 AND tipo_movimento = 'Saída de Viatura' 
+      ORDER BY id DESC LIMIT 1`;
+    const ultimaSaidaResult = await pool.query(ultimaSaidaQuery, [placa.toUpperCase()]);
+    const ultimaSaida = ultimaSaidaResult.rows.length > 0 ? ultimaSaidaResult.rows[0] : null;
+
+    let viaturaEmUso = false;
+    if (ultimaSaida) {
+      // Verifica se existe uma DEVOLUÇÃO com ID maior que o ID desta saída
+      const devolucaoPosteriorQuery = `
+        SELECT id FROM vehicle_logs 
+        WHERE placa = $1 AND tipo_movimento = 'Devolução de Viatura' AND id > $2 
+        ORDER BY id DESC LIMIT 1`;
+      const devolucaoResult = await pool.query(devolucaoPosteriorQuery, [placa.toUpperCase(), ultimaSaida.id]);
+      viaturaEmUso = devolucaoResult.rows.length === 0; // sem devolução posterior = está em uso
+    }
 
     // ==========================================
     // VALIDAÇÃO DE KM MÍNIMO
@@ -150,11 +177,9 @@ app.post('/api/movimentacoes', async (req, res) => {
       }
 
       if (tipo_movimento === 'Devolução de Viatura') {
-        // KM da devolução não pode ser menor que o KM da saída
-        const saidaQuery = `SELECT quilometragem FROM vehicle_logs WHERE placa = $1 AND tipo_movimento = 'Saída de Viatura' ORDER BY id DESC LIMIT 1;`;
-        const saidaResult = await pool.query(saidaQuery, [placa.toUpperCase()]);
-        if (saidaResult.rows.length > 0 && saidaResult.rows[0].quilometragem !== null) {
-          const kmSaida = saidaResult.rows[0].quilometragem;
+        // KM da devolução não pode ser menor que o KM da saída ativa
+        if (ultimaSaida && ultimaSaida.quilometragem !== null) {
+          const kmSaida = ultimaSaida.quilometragem;
           if (km < kmSaida) {
             return res.status(409).json({
               erro: 'KM inválido',
@@ -171,9 +196,17 @@ app.post('/api/movimentacoes', async (req, res) => {
       if (viaturaEmUso) {
         return res.status(409).json({ erro: 'Viatura já em uso', mensagem: `A viatura de placa ${placa} já se encontra em uso/fora da base. Não é possível gerar uma nova saída.` });
       }
-      const agenteAtivoQuery = `SELECT * FROM vehicle_logs WHERE LOWER(agent_name) = LOWER($1) ORDER BY id DESC LIMIT 1;`;
-      const agenteAtivoResult = await pool.query(agenteAtivoQuery, [agente_nome]);
-      if (agenteAtivoResult.rows.length > 0 && agenteAtivoResult.rows[0].tipo_movimento === 'Saída de Viatura') {
+      // VERIFICAÇÃO ROBUSTA DE AGENTE COM VIATURA: busca saída ativa do agente (sem devolução posterior)
+      const agenteSaidaQuery = `
+        SELECT vs.id FROM vehicle_logs vs 
+        WHERE LOWER(vs.agent_name) = LOWER($1) AND vs.tipo_movimento = 'Saída de Viatura'
+        AND NOT EXISTS (
+          SELECT 1 FROM vehicle_logs vd 
+          WHERE vd.placa = vs.placa AND vd.tipo_movimento = 'Devolução de Viatura' AND vd.id > vs.id
+        )
+        ORDER BY vs.id DESC LIMIT 1`;
+      const agenteSaidaResult = await pool.query(agenteSaidaQuery, [agente_nome]);
+      if (agenteSaidaResult.rows.length > 0) {
         return res.status(409).json({ erro: 'Agente já possui viatura em uso', mensagem: `O agente ${agente_nome} já possui uma viatura retirada. É necessário realizar a devolução antes de retirar outra.` });
       }
     }
@@ -212,20 +245,51 @@ app.get('/api/movimentacoes', async (req, res) => {
   } catch (err) { console.error('Erro ao buscar histórico:', err); res.status(500).json({ erro: 'Erro interno.' }); }
 });
 
+// VERIFICAÇÃO ROBUSTA DE AGENTE COM VIATURA EM USO
+// Busca se o agente possui alguma SAÍDA sem DEVOLUÇÃO posterior.
+// Isso evita que um abastecimento (ou outro tipo de registro) entre saída e devolução mascare o status.
 app.get('/api/movimentacoes/usuario-ativo/:nome', async (req, res) => {
   const { nome } = req.params;
   try {
-    const resultado = await pool.query(`SELECT * FROM vehicle_logs WHERE LOWER(agent_name) = LOWER($1) ORDER BY id DESC LIMIT 1;`, [nome]);
-    if (resultado.rows.length > 0 && resultado.rows[0].action_type === 'Saída de Viatura') return res.json({ ativo: true, dados: resultado.rows[0] });
+    const resultado = await pool.query(
+      `SELECT vs.* FROM vehicle_logs vs 
+       WHERE LOWER(vs.agent_name) = LOWER($1) AND vs.tipo_movimento = 'Saída de Viatura'
+       AND NOT EXISTS (
+         SELECT 1 FROM vehicle_logs vd 
+         WHERE vd.placa = vs.placa AND vd.tipo_movimento = 'Devolução de Viatura' AND vd.id > vs.id
+       )
+       ORDER BY vs.id DESC LIMIT 1`,
+      [nome]
+    );
+    if (resultado.rows.length > 0) return res.json({ ativo: true, dados: resultado.rows[0] });
     res.json({ ativo: false });
   } catch (err) { console.error('Erro:', err); res.status(500).json({ erro: 'Erro interno.' }); }
 });
 
+// VERIFICAÇÃO ROBUSTA DE VIATURA COM SAÍDA ATIVA
+// Busca a última SAÍDA da viatura e verifica se existe DEVOLUÇÃO posterior.
+// Isso evita que um abastecimento (ou outro registro) entre saída e devolução mascare o status.
 app.get('/api/movimentacoes/saida-ativa/:placa', async (req, res) => {
   const { placa } = req.params;
   try {
-    const resultado = await pool.query(`SELECT * FROM vehicle_logs WHERE placa = $1 ORDER BY id DESC LIMIT 1;`, [placa.toUpperCase()]);
-    if (resultado.rows.length > 0 && resultado.rows[0].action_type === 'Saída de Viatura') return res.json({ encontrada: true, dados: resultado.rows[0] });
+    const ultimaSaidaQuery = `
+      SELECT * FROM vehicle_logs 
+      WHERE placa = $1 AND tipo_movimento = 'Saída de Viatura' 
+      ORDER BY id DESC LIMIT 1`;
+    const ultimaSaidaResult = await pool.query(ultimaSaidaQuery, [placa.toUpperCase()]);
+    
+    if (ultimaSaidaResult.rows.length > 0) {
+      const ultimaSaida = ultimaSaidaResult.rows[0];
+      // Verifica se existe uma DEVOLUÇÃO com ID maior que o ID desta saída
+      const devolucaoQuery = `
+        SELECT id FROM vehicle_logs 
+        WHERE placa = $1 AND tipo_movimento = 'Devolução de Viatura' AND id > $2 
+        ORDER BY id DESC LIMIT 1`;
+      const devolucaoResult = await pool.query(devolucaoQuery, [placa.toUpperCase(), ultimaSaida.id]);
+      if (devolucaoResult.rows.length === 0) {
+        return res.json({ encontrada: true, dados: ultimaSaida });
+      }
+    }
     res.json({ encontrada: false });
   } catch (err) { console.error('Erro:', err); res.status(500).json({ erro: 'Erro interno.' }); }
 });
@@ -454,15 +518,26 @@ app.get('/api/infracoes/busca/:placa', async (req, res) => {
 // ==========================================
 // USUÁRIOS
 // ==========================================
+// Endpoint usado pelo login para mapear perfil do usuário local
+// ⚠️ SEGURANÇA: NUNCA retorna a senha no response
 app.post('/api/usuarios/buscar-ou-criar', async (req, res) => {
   const { cpf, nome, email } = req.body;
   if (!cpf) return res.status(400).json({ erro: 'CPF é obrigatório.' });
   try {
     // Garante que o CPF seja armazenado apenas com números
     const cpfLimpo = cpf.replace(/[^0-9]/g, '');
-    const busca = await pool.query('SELECT * FROM usuarios WHERE REPLACE(REPLACE(REPLACE(cpf, \'.\', \'\'), \'-\', \'\'), \'/\', \'\') = $1', [cpfLimpo]);
+    const busca = await pool.query(
+      'SELECT id, cpf, nome, email, cargo, is_adm, is_master, criado_em FROM usuarios WHERE REPLACE(REPLACE(REPLACE(cpf, \'.\', \'\'), \'-\', \'\'), \'/\', \'\') = $1',
+      [cpfLimpo]
+    );
     if (busca.rows.length > 0) return res.json(busca.rows[0]);
-    const novo = await pool.query(`INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, senha) VALUES ($1, $2, $3, 'Agente', false, '123456') ON CONFLICT (cpf) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email RETURNING *;`, [cpfLimpo, nome || 'Usuário', email || '']);
+    const novo = await pool.query(
+      `INSERT INTO usuarios (cpf, nome, email, cargo, is_adm, senha) 
+       VALUES ($1, $2, $3, 'Agente', false, '123456') 
+       ON CONFLICT (cpf) DO UPDATE SET nome = EXCLUDED.nome, email = EXCLUDED.email 
+       RETURNING id, cpf, nome, email, cargo, is_adm, is_master, criado_em;`,
+      [cpfLimpo, nome || 'Usuário', email || '']
+    );
     res.status(201).json(novo.rows[0]);
   } catch (err) { res.status(500).json({ erro: 'Erro interno.' }); }
 });

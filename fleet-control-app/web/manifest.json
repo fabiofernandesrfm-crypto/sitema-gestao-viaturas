@@ -1,11 +1,11 @@
 {
-  "name": "FleetControlApp",
-  "short_name": "FleetControl",
-  "description": "A Flutter Web/PWA application for fleet control",
+  "name": "SGV - Polícia Civil de Pernambuco",
+  "short_name": "SGV-PCPE",
+  "description": "Sistema de Gestão de Viaturas — Polícia Civil de Pernambuco",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#007bff",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
   "icons": [
     {
       "src": "icons/Icon-192.png",
