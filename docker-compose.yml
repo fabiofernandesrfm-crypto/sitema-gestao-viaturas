@@ -38,8 +38,6 @@ services:
       args:
         API_BASE_URL: ${API_BASE_URL:-/api}
     restart: unless-stopped
-    ports:
-      - "80"
     depends_on:
       - backend
     networks:
