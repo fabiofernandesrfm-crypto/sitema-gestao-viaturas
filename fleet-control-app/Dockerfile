@@ -2,21 +2,46 @@
 # Frontend Flutter Web (PWA) — SGV Sistema de Gestão de Viaturas
 # =============================================================================
 # Multi-stage build:
-#   Stage 1: Compila o projeto Flutter Web usando o SDK oficial do Flutter
+#   Stage 1: Compila o projeto Flutter Web (Flutter SDK via Git oficial)
 #   Stage 2: Serve os arquivos estáticos via Nginx
 # =============================================================================
 
 # ---- Stage 1: Build Flutter Web ----
-FROM cirrusci/flutter:3.22.3 AS build
+FROM debian:bookworm-slim AS build
+
+# Versão do Flutter a ser instalada
+ARG FLUTTER_VERSION=3.22.3
 
 # Argumento de build para definir a URL base da API
 ARG API_BASE_URL=/api
 ENV API_BASE_URL=${API_BASE_URL}
 
+# Instala dependências essenciais do sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+    zip \
+    ca-certificates \
+    libglu1-mesa \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clona o SDK oficial do Flutter diretamente do repositório Git oficial
+RUN git clone --depth 1 --branch ${FLUTTER_VERSION} \
+    https://github.com/flutter/flutter.git /opt/flutter
+
+# Adiciona o Flutter ao PATH
+ENV PATH="/opt/flutter/bin:${PATH}"
+
+# Pre-cache dos artefatos do Flutter Web (evita downloads repetidos)
+RUN flutter config --no-analytics && \
+    flutter precache --web
+
 WORKDIR /app
 
 # Copia os arquivos de dependências primeiro (para cache de camadas Docker)
-COPY pubspec.yaml pubspec.lock ./
+COPY pubspec.yaml pubspec.lock* ./
 RUN flutter pub get
 
 # Copia o restante do código fonte do projeto Flutter
