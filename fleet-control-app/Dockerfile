@@ -3,7 +3,29 @@
 # =============================================================================
 # Stage 1: Build Flutter Web
 # =============================================================================
-FROM cirruslabs/flutter:3.27.0 AS build
+FROM debian:bookworm-slim AS build
+
+# Instala dependências necessárias para baixar e executar o Flutter SDK
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Baixa e instala o Flutter SDK 3.27.0 (canal estável)
+ARG FLUTTER_VERSION=3.27.0
+RUN git clone --depth 1 --branch ${FLUTTER_VERSION} \
+    https://github.com/flutter/flutter.git /opt/flutter
+
+# Adiciona o Flutter ao PATH
+ENV PATH="/opt/flutter/bin:${PATH}"
+
+# Desabilita analytics e telemetria para builds CI/CD
+RUN flutter config --no-analytics && \
+    flutter precache --web
 
 WORKDIR /app
 
