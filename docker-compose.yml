@@ -1,23 +1,6 @@
-# =============================================================================
-# SGV — Sistema de Gestão de Viaturas
-# Docker Compose (4 serviços: db, backend, frontend, pgadmin)
-# =============================================================================
-# Uso:
-#   1. docker compose up -d              (todos os serviços)
-#   2. docker compose build --no-cache   (rebuild completo)
-#   3. docker compose logs -f backend    (logs do backend)
-#
-# Para Easypanel: este arquivo é importado diretamente como "Compose App".
-# =============================================================================
-version: "3.8"
-
 services:
-  # ========================================
-  # 1. Banco de Dados PostgreSQL
-  # ========================================
   db:
     image: postgres:16-alpine
-    container_name: sgv-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: sgv_viaturas
@@ -25,8 +8,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-sgv_password_2024}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "127.0.0.1:5433:5432"   # expõe apenas localmente (segurança)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sgv_user -d sgv_viaturas"]
       interval: 10s
@@ -36,70 +17,37 @@ services:
     networks:
       - sgv-network
 
-  # ========================================
-  # 2. API Backend Node.js
-  # ========================================
   backend:
     build:
       context: ./fleet-control-backend
       dockerfile: Dockerfile
-    container_name: sgv-api
     restart: unless-stopped
     environment:
       PORT: 3000
       DATABASE_URL: postgresql://pcpe:He9xAdCdKQSBUwa@10.238.118.182:5432/sgv_viaturas?sslmode=disable
-    ports:
-      - "127.0.0.1:3001:3000"   # expõe apenas localmente (acessado via nginx proxy)
     depends_on:
       db:
         condition: service_healthy
     networks:
       - sgv-network
 
-  # ========================================
-  # 3. Frontend Flutter Web (PWA)
-  # ========================================
   frontend:
     build:
       context: ./fleet-control-app
       dockerfile: Dockerfile
       args:
-        # Define a URL base da API. Para deploy com proxy reverso, use /api.
-        # Para deploy com domínio separado, use https://seu-dominio.com/api
         API_BASE_URL: ${API_BASE_URL:-/api}
-    container_name: sgv-frontend
     restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-80}:80"
+    expose:
+      - "80"
     depends_on:
       - backend
     networks:
       - sgv-network
 
-  # ========================================
-  # 4. PgAdmin (opcional — gestão do banco)
-  # ========================================
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: sgv-pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@policiacivil.pe.gov.br}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
-    ports:
-      - "127.0.0.1:5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    networks:
-      - sgv-network
-    profiles:
-      - tools   # só sobe com: docker compose --profile tools up -d
-
 volumes:
   pgdata:
     name: sgv_pgdata
-  pgadmin_data:
-    name: sgv_pgadmin_data
 
 networks:
   sgv-network:
