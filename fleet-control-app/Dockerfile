@@ -3,7 +3,7 @@
 # =============================================================================
 # Stage 1: Build Flutter Web
 # =============================================================================
-FROM ghcr.io/cirruslabs/flutter:3.27.0 AS build
+FROM cirruslabs/flutter:3.27.0 AS build
 
 WORKDIR /app
 
