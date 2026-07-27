@@ -1,9 +1,34 @@
 # =============================================================================
 # Frontend Flutter Web (PWA) — SGV Sistema de Gestão de Viaturas
 # =============================================================================
-# Stage 1: Build Flutter Web usando imagem pronta com Flutter integrado
+# Stage 1: Build Flutter Web
 # =============================================================================
-FROM ghcr.io/cirruslabs/flutter:3.27.0 AS build
+FROM debian:bookworm-slim AS build
+
+# Instala dependências necessárias para baixar e executar o Flutter SDK
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Baixa e instala o Flutter SDK 3.27.0 via Git (com retry para robustez)
+ARG FLUTTER_VERSION=3.27.0
+RUN for i in 1 2 3; do \
+      git clone --depth 1 --branch ${FLUTTER_VERSION} \
+      https://github.com/flutter/flutter.git /opt/flutter && break || \
+      (echo "Tentativa $i falhou, retentando em 5s..." && sleep 5); \
+    done && test -f /opt/flutter/bin/flutter
+
+# Adiciona o Flutter ao PATH
+ENV PATH="/opt/flutter/bin:${PATH}"
+
+# Desabilita analytics e telemetria para builds CI/CD
+RUN flutter config --no-analytics && \
+    flutter precache --web
 
 WORKDIR /app
 
@@ -15,6 +40,7 @@ RUN flutter pub get
 COPY . .
 
 # Build otimizado para web com definições de ambiente
+# --dart-define=API_BASE_URL pode ser sobrescrito via --build-arg no docker build
 ARG API_BASE_URL=/api
 RUN flutter build web \
     --release \
