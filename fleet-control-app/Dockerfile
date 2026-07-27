@@ -1,11 +1,35 @@
 # =============================================================================
 # Frontend Flutter Web (PWA) — SGV Sistema de Gestão de Viaturas
 # =============================================================================
-# Este Dockerfile NÃO faz o build do Flutter.
-# O build web deve ser executado localmente antes com:
-#   cd fleet-control-app && flutter build web --release --no-tree-shake-icons
-# O Easypanel apenas servirá os arquivos estáticos prontos via Nginx.
+# Multi-stage build:
+#   Stage 1: Compila o projeto Flutter Web usando o SDK oficial do Flutter
+#   Stage 2: Serve os arquivos estáticos via Nginx
 # =============================================================================
+
+# ---- Stage 1: Build Flutter Web ----
+FROM cirrusci/flutter:3.22.3 AS build
+
+# Argumento de build para definir a URL base da API
+ARG API_BASE_URL=/api
+ENV API_BASE_URL=${API_BASE_URL}
+
+WORKDIR /app
+
+# Copia os arquivos de dependências primeiro (para cache de camadas Docker)
+COPY pubspec.yaml pubspec.lock ./
+RUN flutter pub get
+
+# Copia o restante do código fonte do projeto Flutter
+COPY . .
+
+# Build do Flutter Web em modo release
+# --no-tree-shake-icons: mantém todos os ícones Material Icons
+# --dart-define: define a variável de compilação API_BASE_URL usada pelo ApiConfig
+RUN flutter build web --release \
+    --dart-define=API_BASE_URL=${API_BASE_URL} \
+    --no-tree-shake-icons
+
+# ---- Stage 2: Serve com Nginx ----
 FROM nginx:1.27-alpine
 
 # Remove a configuração default do nginx
@@ -14,23 +38,8 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copia nossa configuração otimizada para PWA
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copia os arquivos já buildados do Flutter Web
-COPY build/web /usr/share/nginx/html
-
-# Adiciona headers específicos para PWA
-RUN echo '{\
-  "name": "SGV - Polícia Civil de Pernambuco",\
-  "short_name": "SGV-PCPE",\
-  "description": "Sistema de Gestão de Viaturas - PCPE",\
-  "start_url": "/",\
-  "display": "standalone",\
-  "background_color": "#0F172A",\
-  "theme_color": "#0F172A",\
-  "icons": [\
-    {"src": "icons/Icon-192.png", "sizes": "192x192", "type": "image/png"},\
-    {"src": "icons/Icon-512.png", "sizes": "512x512", "type": "image/png"}\
-  ]\
-}' > /usr/share/nginx/html/manifest.json
+# Copia os arquivos já buildados do Stage 1
+COPY --from=build /app/build/web /usr/share/nginx/html
 
 # Cria ícones PWA placeholder se não existirem
 RUN mkdir -p /usr/share/nginx/html/icons && \
