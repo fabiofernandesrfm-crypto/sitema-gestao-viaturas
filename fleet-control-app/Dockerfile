@@ -1,56 +1,12 @@
 # =============================================================================
 # Frontend Flutter Web (PWA) — SGV Sistema de Gestão de Viaturas
 # =============================================================================
-# Stage 1: Build Flutter Web
+# Este Dockerfile NÃO faz o build do Flutter.
+# O build web deve ser executado localmente antes com:
+#   cd fleet-control-app && flutter build web --release --no-tree-shake-icons
+# O Easypanel apenas servirá os arquivos estáticos prontos via Nginx.
 # =============================================================================
-FROM debian:bookworm-slim AS build
-
-# Instala dependências necessárias para baixar e executar o Flutter SDK
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash \
-    ca-certificates \
-    curl \
-    git \
-    unzip \
-    xz-utils \
-    && rm -rf /var/lib/apt/lists/*
-
-# Baixa e instala o Flutter SDK 3.27.0 via Git (com retry para robustez)
-ARG FLUTTER_VERSION=3.27.0
-RUN for i in 1 2 3; do \
-      git clone --depth 1 --branch ${FLUTTER_VERSION} \
-      https://github.com/flutter/flutter.git /opt/flutter && break || \
-      (echo "Tentativa $i falhou, retentando em 5s..." && sleep 5); \
-    done && test -f /opt/flutter/bin/flutter
-
-# Adiciona o Flutter ao PATH
-ENV PATH="/opt/flutter/bin:${PATH}"
-
-# Desabilita analytics e telemetria para builds CI/CD
-RUN flutter config --no-analytics && \
-    flutter precache --web
-
-WORKDIR /app
-
-# Copia os arquivos de dependências primeiro (cache layer)
-COPY pubspec.yaml pubspec.lock ./
-RUN flutter pub get
-
-# Copia o restante do código fonte
-COPY . .
-
-# Build otimizado para web com definições de ambiente
-# --dart-define=API_BASE_URL pode ser sobrescrito via --build-arg no docker build
-ARG API_BASE_URL=/api
-RUN flutter build web \
-    --release \
-    --no-tree-shake-icons \
-    --dart-define=API_BASE_URL=${API_BASE_URL}
-
-# =============================================================================
-# Stage 2: Servir com nginx (PWA-ready)
-# =============================================================================
-FROM nginx:1.27-alpine AS serve
+FROM nginx:1.27-alpine
 
 # Remove a configuração default do nginx
 RUN rm /etc/nginx/conf.d/default.conf
@@ -58,8 +14,8 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copia nossa configuração otimizada para PWA
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copia os arquivos buildados do Flutter
-COPY --from=build /app/build/web /usr/share/nginx/html
+# Copia os arquivos já buildados do Flutter Web
+COPY build/web /usr/share/nginx/html
 
 # Adiciona headers específicos para PWA
 RUN echo '{\

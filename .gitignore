@@ -1,6 +1,7 @@
 # Flutter
 fleet-control-app/.dart_tool/
-fleet-control-app/build/
+fleet-control-app/build/*
+!fleet-control-app/build/web/
 fleet-control-app/.flutter-plugins
 fleet-control-app/.flutter-plugins-dependencies
 fleet-control-app/pubspec.lock
