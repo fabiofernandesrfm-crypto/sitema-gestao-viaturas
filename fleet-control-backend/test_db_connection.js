@@ -14,11 +14,7 @@ console.log('  DB_PASSWORD:', process.env.DB_PASSWORD ? '***' : '(não definida)
 console.log('  DB_NAME:', process.env.DB_NAME);
 
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+  connectionString: process.env.DATABASE_URL || `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}?sslmode=disable`,
 });
 
 pool.query('SELECT NOW() AS current_time, current_database() AS db_name')
