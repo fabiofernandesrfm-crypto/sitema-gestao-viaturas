@@ -54,10 +54,12 @@ services:
       - sgv-network
 
   # ========================================
-  # 3. Frontend Flutter Web (PWA) - Usando Imagem Pronta do Docker Hub
+  # 3. Frontend Flutter Web (PWA) — Build local via Dockerfile
   # ========================================
   frontend:
-    image: fabiofernandesrfm/sgv-frontend:latest
+    build:
+      context: ./fleet-control-app
+      dockerfile: Dockerfile
     container_name: sgv-frontend
     restart: unless-stopped
     ports:
