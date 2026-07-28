@@ -225,7 +225,8 @@ app.post('/api/movimentacoes', async (req, res) => {
         await pool.query('UPDATE viaturas SET status = $1 WHERE placa = $2', ['disponivel', placa.toUpperCase()]);
       }
     } catch (updateErr) { console.error('Erro ao atualizar status da viatura:', updateErr); }
-    if (km !== null) { await verificarManutencaoAutomatica(placa.toUpperCase(), km); }
+    // Verificação de manutenção automática ocorre apenas na Saída de Viatura
+    if (km !== null && tipo_movimento === 'Saída de Viatura') { await verificarManutencaoAutomatica(placa.toUpperCase(), km); }
     res.status(201).json({ mensagem: 'Movimentação registrada com sucesso!', movimentacao: novoLog.rows[0] });
   } catch (err) {
     console.error('Erro ao registrar movimentação:', err);

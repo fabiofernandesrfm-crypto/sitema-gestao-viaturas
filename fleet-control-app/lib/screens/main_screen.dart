@@ -198,6 +198,83 @@ class _MainScreenState extends State<MainScreen> {
       isLoadingPlaca = false;
       atualizarPainelDadosTratados(setStateModal);
 
+      // Verifica alertas de manutenção no momento da seleção da viatura (apenas na Saída)
+      if (moduleName == 'Saída de Viatura' && placaIdentificada.isNotEmpty) {
+        try {
+          final alertas = await ApiService.verificarAlertasManutencao(placaIdentificada);
+          if (alertas.isNotEmpty && context.mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                    SizedBox(width: 8),
+                    Text('Aviso de Manutenção'),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 450,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'A viatura $placaIdentificada possui os seguintes itens de manutenção pendentes:',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 12),
+                      ...alertas.map((a) => Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.build, color: Colors.red, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '${a['componente']} (Limite: ${a['km_limite']} km)',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade200),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Este é apenas um aviso informativo. A operação não será bloqueada.',
+                                style: TextStyle(fontSize: 12, color: Colors.blue),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Entendi'),
+                  ),
+                ],
+              ),
+            );
+          }
+        } catch (_) {}
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -536,84 +613,6 @@ class _MainScreenState extends State<MainScreen> {
                           );
                         }
                         return;
-                      }
-
-                      // Verifica alertas de manutenção apenas na Saída de Viatura
-                      List<dynamic> alertasManutencao = [];
-                      if (moduleName == 'Saída de Viatura') {
-                        try {
-                          alertasManutencao = await ApiService.verificarAlertasManutencao(placaIdentificada);
-                        } catch (_) {}
-                        if (alertasManutencao.isNotEmpty && context.mounted) {
-                          await showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Row(
-                                children: [
-                                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-                                  SizedBox(width: 8),
-                                  Text('Aviso de Manutenção'),
-                                ],
-                              ),
-                              content: SizedBox(
-                                width: 450,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'A viatura $placaIdentificada possui os seguintes itens de manutenção pendentes:',
-                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    ...alertasManutencao.map((a) => Padding(
-                                          padding: const EdgeInsets.only(bottom: 6),
-                                          child: Row(
-                                            children: [
-                                              const Icon(Icons.build, color: Colors.red, size: 18),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  '${a['componente']} (Limite: ${a['km_limite']} km)',
-                                                  style: const TextStyle(fontSize: 13),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        )),
-                                    const SizedBox(height: 12),
-                                    Container(
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.shade50,
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: Colors.blue.shade200),
-                                      ),
-                                      child: const Row(
-                                        children: [
-                                          Icon(Icons.info_outline, color: Colors.blue, size: 18),
-                                          SizedBox(width: 8),
-                                          Expanded(
-                                            child: Text(
-                                              'Este é apenas um aviso informativo. A operação não será bloqueada.',
-                                              style: TextStyle(fontSize: 12, color: Colors.blue),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              actions: [
-                                ElevatedButton(
-                                  onPressed: () => Navigator.pop(ctx),
-                                  child: const Text('Entendi'),
-                                ),
-                              ],
-                            ),
-                          );
-                        }
                       }
 
                       setStateModal(() => salvando = true);

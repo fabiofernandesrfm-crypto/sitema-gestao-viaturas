@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://pcpe:He9xAdCdKQSBUwa@10.238.118.182:5432/sgv_viaturas?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL}
     ports:
       - "127.0.0.1:3001:3000"
     depends_on:
