@@ -29,7 +29,11 @@ services:
     restart: unless-stopped
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://sgv_user:sgv_password_2024@db:5432/sgv_viaturas
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: sgv_user
+      DB_PASSWORD: sgv_password_2024
+      DB_NAME: sgv_viaturas
     ports:
       - "3000:3000"
     depends_on:
