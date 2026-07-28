@@ -112,85 +112,6 @@ class _MainScreenState extends State<MainScreen> {
       setStateModal(() {});
     }
 
-    Future<void> _verificarAlertasManutencao(
-        BuildContext context, String placa, StateSetter setStateModal) async {
-      try {
-        final alertas = await ApiService.verificarAlertasManutencao(placa);
-        if (alertas.isNotEmpty && context.mounted) {
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-                  SizedBox(width: 8),
-                  Text('Aviso de Manutenção'),
-                ],
-              ),
-              content: SizedBox(
-                width: 450,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'A viatura $placa possui os seguintes itens de manutenção pendentes:',
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 12),
-                    ...alertas.map((a) => Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.build, color: Colors.red, size: 18),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '${a['componente']} (Limite: ${a['km_limite']} km)',
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.info_outline, color: Colors.blue, size: 18),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Este é apenas um aviso informativo. A operação não será bloqueada.',
-                              style: TextStyle(fontSize: 12, color: Colors.blue),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Entendi'),
-                ),
-              ],
-            ),
-          );
-        }
-      } catch (e) {
-        print('Erro ao verificar alertas de manutenção: $e');
-      }
-    }
-
     Future<void> processarPlaca(String placaBruta, StateSetter setStateModal) async {
       if (placaBruta.trim().isEmpty) return;
 
@@ -297,9 +218,6 @@ class _MainScreenState extends State<MainScreen> {
       }
       atualizarPainelDadosTratados(setStateModal);
 
-      if (placaIdentificada.isNotEmpty && km.isNotEmpty) {
-        _verificarAlertasManutencao(context, placaIdentificada, setStateModal);
-      }
     }
 
     showDialog(
