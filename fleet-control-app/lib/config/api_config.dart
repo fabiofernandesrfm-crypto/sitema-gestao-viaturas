@@ -18,7 +18,7 @@ class ApiConfig {
   /// URL base do servidor backend.
   /// Em desenvolvimento local: http://localhost:3000/api
   /// Em produção: definida via --dart-define=API_BASE_URL ou usa produção fixa.
-  static const String _localBaseUrl = 'http://localhost:3000/api';
+  static const String _localBaseUrl = 'http://10.238.118.182:3010/api';
   static const String _productionBaseUrl =
       'https://analise.policiacivil.pe.gov.br/api';
 
